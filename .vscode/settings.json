@@ -1,0 +1,10 @@
+{
+    "ecl.launchConfiguration": "PlayCluster",
+    "ecl.targetCluster": {
+        "PlayCluster": "thor"
+    },
+    "cSpell.words": [
+        "Eligiable",
+        "encourge"
+    ]
+}
