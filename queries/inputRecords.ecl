@@ -125,7 +125,8 @@ EXPORT InputRecords := MODULE
         STRING    Children;
         STRING    BioRelationships;
         STRING    Sexuality;
-        STRING    GenderIdentity;
+        STRING    Gender;
+        STRING    BiologicalGender;
         REAL4     Latitude;
         REAl4     Logatitude;
     END;
