@@ -1,3 +1,4 @@
+#OPTION('obfuscateOutput', TRUE);
 
 x   := 12;
 

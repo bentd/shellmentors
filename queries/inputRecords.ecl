@@ -1,4 +1,4 @@
-EXPORT inputRecords := MODULE
+EXPORT InputRecords := MODULE
 
     
     EXPORT MentorsRaw_Rec := RECORD
