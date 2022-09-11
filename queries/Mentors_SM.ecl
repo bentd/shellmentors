@@ -21,6 +21,30 @@ Youth := InputRecords.Youth_TestData(FirstName=_FirstName,
 OUTPUT(Youth, NAMED('YouthRecord'));
 
 
+
+REAL Haversine (REAL4 LAT1, REAL4 LON1, REAL LAT2, REAL4 LON2) := FUNCTION
+
+    REAL Rad2Deg := 57.295779513082;
+    REAL Deg2Rad := 0.0174532925199;
+
+    REAL deltaPhi := ABS(LAT2 - LAT1) * Deg2Rad * 0.5;
+    REAL deltaLambda := ABS(LON2 - LON1) * Deg2Rad * 0.5;
+
+    REAL sinPhi := POWER(SIN(deltaPhi), 2);
+    REAL sinLambda := POWER(SIN(deltaLambda), 2);
+
+    REAL cosPhi1 := COS(LAT1);
+    REAL cosPhi2 := COS(LAT2);
+
+    REAL A := sinPhi + cosPhi1 * cosPhi2 * sinLambda;
+
+    REAL C := 2 * ATAN2(SQRT(A), SQRT(1-A));
+
+    RETURN 3958.8 * C;
+
+END;
+
+
 MentorsPreMatchLayout := RECORD
     STRING       FullName;
     STRING       FirstName;
@@ -110,6 +134,8 @@ MentorsPreMatchLayout := RECORD
     INTEGER1     Gender_Non_binary;
     REAL4        Latitude;
     REAL4        Logatitude;
+    REAL         Distance;
+    REAL         MaximumDistance;
     STRING    Religion;
     STRING    RoleofFaith;
     STRING    AlcoholUse;
@@ -162,11 +188,14 @@ MentorsPreMatchDS := JOIN(
         SELF.Sexuality := RIGHT.Sexuality;
         SELF.GenderIdentity := RIGHT.Gender;
         SELF.Sex := RIGHT.BiologicalGender;
+        SELF.MaximumDistance := _Distance;
+        SELF.Distance := Haversine(Left.Latitude, Left.Logatitude,  Right.Latitude, Right.Logatitude);
     ),
     ALL
 );
 
 MentorsMatchedDS := MentorsPreMatchDS(
+    IF(MaximumDistance >= Distance AND Distance >= 0, TRUE, FALSE) AND
     // religion
     IF(Religion = 'Christianity', Religion_Christian > 0, TRUE) AND
     IF(Religion = 'Islam', Religion_Muslim > 0, TRUE) AND
@@ -243,8 +272,6 @@ MentorsMatchedDS := MentorsPreMatchDS(
     IF(GenderIdentity = 'Female', Gender_Female > 0, TRUE)
 );
 
-OUTPUT(MentorsMatchedDS, NAMED('MatchingMentors'));
-
 
 MentorsPostMatchLayout := RECORD
     STRING       FullName;
@@ -275,8 +302,11 @@ MentorsPostMatchLayout := RECORD
     INTEGER1     Religion_Other;
     INTEGER1     Religion_Spiritual;
     INTEGER1     Religion_None;
-    STRING       RoleofFaith_primary;
-    STRING       RoleofFaith_spouse;
+
+    // postmatch
+    DECIMAL2_1       RoleofFaithAverage;
+
+
     INTEGER1     Alcohol_Occasional;
     INTEGER1     Alcohol_Responsible;
     INTEGER1     Alcohol_Irresponsible;
@@ -288,19 +318,22 @@ MentorsPostMatchLayout := RECORD
     INTEGER1     Vaping_Occasional;
     INTEGER1     Vaping_Regular;
     INTEGER1     JobRetentionChallenges;
-    STRING       DayOff_primary;
-    STRING       DayOff_spouse;
-    STRING       FavoritPlace_primary;
-    STRING       FavoritePlace_spouse;
-    STRING       Personality_primary;
-    STRING       Personality_spouse;
+
+    // postmatch    
+    DECIMAL2_1       DayOffAverage;
+    DECIMAL2_1       FavoritePlaceAverage;
+    DECIMAL2_1       PersonalityAverage;
+
+
     INTEGER1     SocialStyle_Introverted;
     INTEGER1     SocialStyle_Extraverted;
     INTEGER1     SocialStyle_Both;
-    STRING       SadnessResponse_primary;
-    STRING       SadnessResponse_spouse;
-    STRING       AngerResponse_primary;
-    STRING       AngerResponse_spouse;
+
+    // postmatch
+    DECIMAL2_1       SadnessResponseAverage;
+    DECIMAL2_1       AngerResponseAverage;
+
+
     INTEGER1     ContinuingEducation;
     INTEGER1     Supports_Holidays;
     INTEGER1     Supports_Job;
@@ -335,6 +368,7 @@ MentorsPostMatchLayout := RECORD
     INTEGER1     Gender_Non_binary;
     REAL4        Latitude;
     REAL4        Logatitude;
+    REAL         Distance;    
     STRING    Religion;
     STRING    RoleofFaith;
     STRING    AlcoholUse;
@@ -357,20 +391,189 @@ MentorsPostMatchLayout := RECORD
     STRING    Sex;
 END;
 
-/*
-NameOutRec: Result of the project gets saved in this record layout
-CatThem: TRANSFORM name
-Names_layout L: Left datasets that’s passed through project
-INTEGER C: Counter
-NameOutRec CatThem(MentorsMatchedDS table, INTEGER C) := TRANSFORM
 
-    table.
-  // Contacting FirstName with LastName and adding space between them
-  SELF.CatValues := L.FirstName + ' ' + L.LastName; 
-  SELF.RecCount := C; // Counter
-  // Assign default values to all fields that are in result dataset and haven't been define in this TRANSFORM
-  SELF := L; 
-
+MentorsPostMatchLayout PostMatch (MentorsPreMatchLayout L) := TRANSFORM
+    SELF.RoleofFaithAverage := (IF(L.RoleofFaith = L.RoleofFaith_primary, 1, 0) + IF(L.RoleofFaith = L.RoleofFaith_spouse, 1, 0)) / IF(L.Spouse_FirstName = '', 1, 2);
+    SELF.DayOffAverage := (IF(L.DayOff = L.DayOff_primary, 1, 0) + IF(L.DayOff = L.DayOff_spouse, 1, 0)) / IF(L.Spouse_FirstName = '', 1, 2);
+    SELF.FavoritePlaceAverage := (IF(L.FavoritePlace = L.FavoritPlace_primary, 1, 0) + IF(L.FavoritePlace = L.FavoritePlace_spouse, 1, 0)) / IF(L.Spouse_FirstName = '', 1, 2);    
+    SELF.PersonalityAverage := (IF(L.Personality = L.Personality_primary, 1, 0) + IF(L.Personality = L.Personality_spouse, 1, 0)) / IF(L.Spouse_FirstName = '', 1, 2);  
+    SELF.SadnessResponseAverage := (IF(L.SadnessResponse = L.SadnessResponse_primary, 1, 0) + IF(L.SadnessResponse = L.SadnessResponse_spouse, 1, 0)) / IF(L.Spouse_FirstName = '', 1, 2);        
+    SELF.AngerResponseAverage := (IF(L.AngerResponse = L.AngerResponse_primary, 1, 0) + IF(L.AngerResponse = L.AngerResponse_spouse, 1, 0)) / IF(L.Spouse_FirstName = '', 1, 2);    
+    SELF := L;
 END;
-*/
 
+
+MentorsPostMatchDS := PROJECT(MentorsMatchedDS,
+                              PostMatch(LEFT));
+
+
+MentorsMatchedFinalLayout := RECORD
+    STRING       FullName;
+    STRING       FirstName;
+    STRING       LastName;
+    STRING       Gender;
+    STRING       Status;
+    STRING       Region;
+    STRING       Ethnicity;
+    STRING       Occupation_primary;
+    STRING       MaritalStatus;
+    STRING       Spouse_FirstName;
+    STRING       Spouse_LastName;
+    STRING       Spouse_Gender;
+    STRING       Spouse_RaceEthnicity;
+    STRING       Spouse_Birthday;
+    STRING       Spouse_Age;
+    STRING       Spouse_Occupation;
+    STRING       Street;
+    STRING       City;
+    STRING       State;
+    STRING       ZipCode;
+    INTEGER1     Religion_Christian;
+    INTEGER1     Religion_Muslim;
+    INTEGER1     Religion_Jewish;
+    INTEGER1     Religion_Hindu;
+    INTEGER1     Religion_Buddhist;
+    INTEGER1     Religion_Other;
+    INTEGER1     Religion_Spiritual;
+    INTEGER1     Religion_None;
+
+    // postmatch
+    DECIMAL2_1       RoleofFaithAverage;
+
+
+    INTEGER1     Alcohol_Occasional;
+    INTEGER1     Alcohol_Responsible;
+    INTEGER1     Alcohol_Irresponsible;
+    INTEGER1     DrugUse;
+    INTEGER1     Marijuana_Occasional;
+    INTEGER1     Marijuana_Regular;
+    INTEGER1     Cigarettes_Occasional;
+    INTEGER1     Cigarettes_Regular;
+    INTEGER1     Vaping_Occasional;
+    INTEGER1     Vaping_Regular;
+    INTEGER1     JobRetentionChallenges;
+
+    // postmatch    
+    DECIMAL2_1       DayOffAverage;
+    DECIMAL2_1       FavoritePlaceAverage;
+    DECIMAL2_1       PersonalityAverage;
+
+
+    INTEGER1     SocialStyle_Introverted;
+    INTEGER1     SocialStyle_Extraverted;
+    INTEGER1     SocialStyle_Both;
+
+    // postmatch
+    DECIMAL2_1       SadnessResponseAverage;
+    DECIMAL2_1       AngerResponseAverage;
+
+
+    INTEGER1     ContinuingEducation;
+    INTEGER1     Supports_Holidays;
+    INTEGER1     Supports_Job;
+    INTEGER1     Supports_Parenting;
+    INTEGER1     Supports_Medical;
+    INTEGER1     Supports_Legal;
+    INTEGER1     Supports_Budgeting;
+    INTEGER1     Supports_MentalHealth;
+    INTEGER1     Supports_Resources;
+    INTEGER1     Supports_Social;
+    STRING       Multiple_Matches;
+    STRING       Match_Housing;
+    STRING       Emergency_Housing;
+    INTEGER1     CriminalHistory_Arrested;
+    INTEGER1     CriminalHistory_Jail;
+    INTEGER1     CriminalHistory_CurrentProbation;
+    INTEGER1     Children_Pregnant;
+    INTEGER1     Children_Custody1;
+    INTEGER1     Children_Custodymultiple;
+    INTEGER1     Children_Kincare1;
+    INTEGER1     Children_Kincaremultiple;
+    INTEGER1     Children_Welfare1;
+    INTEGER1     Children_Welfaremultiple;
+    INTEGER1     Bio_Important;
+    INTEGER1     Bio_Difficult;
+    INTEGER1     Sexuality_Heterosexual;
+    INTEGER1     Sexuality_Homosexual;
+    INTEGER1     Sexuality_Bisexual;
+    INTEGER1     Gender_Male;
+    INTEGER1     Gender_Female;
+    INTEGER1     Gender_Transgender;
+    INTEGER1     Gender_Non_binary;
+    REAL4        Latitude;
+    REAL4        Logatitude;
+    REAL         Distance;
+    REAL         TotalScore;
+END;
+
+MentorsMatchedFinalLayout Finalize (MentorsPostMatchLayout L) := TRANSFORM
+    SELF := L;
+    SELF.TotalScore := (L.Religion_Christian + 
+                   L.Religion_Muslim + 
+                   L.Religion_Jewish + 
+                   L.Religion_Hindu + 
+                   L.Religion_Buddhist +
+                   L.Religion_Other + 
+                   L.Religion_Spiritual +
+                   L.Religion_None +
+                   L.RoleofFaithAverage +
+                   L.Alcohol_Occasional + 
+                   L.Alcohol_Responsible +
+                   L.Alcohol_Irresponsible +
+                   L.DrugUse + 
+                   L.Marijuana_Occasional + 
+                   L.Marijuana_Regular + 
+                   L.Cigarettes_Occasional + 
+                   L.Cigarettes_Regular + 
+                   L.Vaping_Occasional + 
+                   L.Vaping_Regular + 
+                   L.JobRetentionChallenges + 
+                   L.DayOffAverage + 
+                   L.FavoritePlaceAverage + 
+                   L.PersonalityAverage + 
+                   L.SocialStyle_Introverted + 
+                   L.SocialStyle_Extraverted + 
+                   L.SocialStyle_Both + 
+                   L.SadnessResponseAverage + 
+                   L.AngerResponseAverage + 
+                   L.ContinuingEducation + 
+                   L.Supports_Holidays + 
+                   L.Supports_Job + 
+                   L.Supports_Parenting + 
+                   L.Supports_Medical + 
+                   L.Supports_Legal + 
+                   L.Supports_Budgeting + 
+                   L.Supports_MentalHealth + 
+                   L.Supports_Resources + 
+                   L.Supports_Social + 
+                   L.CriminalHistory_Arrested + 
+                   L.CriminalHistory_Jail + 
+                   L.CriminalHistory_CurrentProbation + 
+                   L.Children_Pregnant + 
+                   L.Children_Custody1 + 
+                   L.Children_Custodymultiple + 
+                   L.Children_Kincare1 + 
+                   L.Children_Kincaremultiple + 
+                   L.Children_Welfare1 + 
+                   L.Children_Welfaremultiple + 
+                   L.Bio_Important + 
+                   L.Bio_Difficult + 
+                   L.Sexuality_Heterosexual + 
+                   L.Sexuality_Homosexual + 
+                   L.Sexuality_Bisexual + 
+                   L.Gender_Male + 
+                   L.Gender_Female + 
+                   L.Gender_Transgender + 
+                   L.Gender_Non_binary);
+END;
+
+
+
+MentorsMatchedFinal := PROJECT(MentorsPostMatchDS,
+                               Finalize(LEFT));
+
+
+MentorsMatchedFinalSorted := SORT(MentorsMatchedFinal, -TotalScore);
+
+
+OUTPUT(MentorsMatchedFinalSorted, NAMED('MentorsMatchedFinalSorted'));
